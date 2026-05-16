@@ -9,169 +9,164 @@ from concurrent.futures import ThreadPoolExecutor
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Set page config for a better look
-st.set_page_config(page_title="Pycon Plate Navigator", page_icon="🍜", layout="wide")
+# Constants
+DEFAULT_LOCATION = "300 E Ocean Blvd, Long Beach, CA 90802"
+WALKING_MODE = 2
 
-st.title("🍜 PyCon Plate Navigator")
-st.markdown("### Find local spots that accommodate everyone's dietary needs.")
-
-# Sidebar for inputs
-with st.sidebar:
-    st.header("Search Parameters")
-    location_name = st.selectbox("📍 Select Location", ["PyCon US 2026"])
-    
-    # Map selection to address
-    if location_name == "PyCon US 2026":
-        location = "300 E Ocean Blvd, Long Beach, CA 90802"
-    else:
-        location = "300 E Ocean Blvd, Long Beach, CA 90802" # Fallback
-        
-    wants = st.text_input("🍱 What people want (e.g., Japanese, Vietnamese)", "Vietnamese")
-    avoids = st.text_input("🚫 What to avoid", "onions")
-    
-    # Securely get API key from environment or secrets
+def get_serpapi_key():
+    """Securely get API key from environment or user input."""
     api_key = os.getenv("SERP_API_KEY")
-    
     if not api_key:
-        api_key = st.text_input("🔑 SerpApi Key", type="password", help="Enter your SerpApi key. For deployment, use secrets.")
+        api_key = st.sidebar.text_input(
+            "🔑 SerpApi Key", 
+            type="password", 
+            help="Enter your SerpApi key. For deployment, use secrets."
+        )
     else:
-        st.info("✅ SerpApi Key loaded from environment.")
+        st.sidebar.info("✅ SerpApi Key loaded from environment.")
+    return api_key
 
-if st.button("Find Spots Nearby"):
-    if not api_key:
-        st.error("Please provide a SerpApi key.")
-    else:
-        # Prepare search query
+def search_restaurants(client, query, location):
+    """Search for restaurants using SerpApi."""
+    params = {
+        "engine": "google_maps",
+        "q": f"{query} in {location}",
+        "ll": "@33.7658273,-118.1899613,15z",
+        "type": "search"
+    }
+    return client.search(params).get("local_results", [])
+
+def get_walking_distance(client, start_location, end_address, title):
+    """Fetch walking distance between two locations."""
+    dir_params = {
+        "engine": "google_maps_directions",
+        "start_addr": start_location,
+        "end_addr": end_address,
+        "travel_mode": WALKING_MODE
+    }
+    try:
+        results = client.search(dir_params)
+        if results.get("error"):
+            logger.error(f"Error fetching directions for {title}: {results.get('error')}")
+            return "Unknown", 999999
+        
+        directions = results.get("directions", [])
+        if directions:
+            best_route = directions[0]
+            return best_route.get("formatted_distance", "Unknown"), best_route.get("distance", 999999)
+    except Exception:
+        logger.exception(f"Unexpected error fetching directions for {title}")
+    return "Unknown", 999999
+
+def get_review_mentions(client, data_id, avoid_list, title):
+    """Fetch reviews and check for items to avoid."""
+    mentions = {}
+    try:
+        results = client.search({"engine": "google_maps_reviews", "data_id": data_id})
+        for review in results.get("reviews", []):
+            snippet = review.get("snippet", "").lower()
+            for item in avoid_list:
+                if item in snippet:
+                    mentions.setdefault(item, []).append(review.get("snippet"))
+    except Exception:
+        logger.exception(f"Unexpected error fetching reviews for {title}")
+    return mentions
+
+def process_place(client, place, start_location, avoid_list):
+    """Process a single place: fetch distance and reviews."""
+    title = place.get("title")
+    address = place.get("address")
+    
+    distance_text, distance_val = get_walking_distance(client, start_location, address, title)
+    mentions = get_review_mentions(client, place.get("data_id"), avoid_list, title)
+    
+    link = place.get("links", {}).get("directions")
+    if not link:
+        query = f"{title} {address or ''}".strip()
+        link = f"https://www.google.com/maps/search/?api=1&query={query.replace(' ', '+')}"
+
+    return {
+        "Title": title,
+        "Rating": place.get("rating"),
+        "Reviews": place.get("reviews"),
+        "Address": address,
+        "Distance": distance_text,
+        "distance_val": distance_val,
+        "Mentions": mentions,
+        "Links": link
+    }
+
+def display_spot(spot, avoids):
+    """Render a single spot in Streamlit."""
+    mention_count = sum(len(m) for m in spot['Mentions'].values())
+    avoid_label = avoids if avoids else "anything"
+    
+    with st.expander(f"{spot['Title']} - {spot['Distance']} walk - {spot['Rating']}⭐ ({mention_count} mentions of items to avoid)"):
+        st.markdown(f"**Address:** [{spot['Address']}]({spot['Links']})")
+        
+        if spot['Mentions']:
+            avoid_list = [a.strip() for a in avoids.split(",") if a.strip()]
+            for item, snippets in spot['Mentions'].items():
+                st.write(f"**Review snippets mentioning '{item}':**")
+                for snippet in snippets:
+                    highlighted = snippet
+                    for avoid_item in avoid_list:
+                        pattern = re.compile(re.escape(avoid_item), re.IGNORECASE)
+                        highlighted = pattern.sub(rf'<span style="color:red; font-weight:bold;">\g<0></span>', highlighted)
+                    st.markdown(f"<blockquote>{highlighted}</blockquote>", unsafe_allow_html=True)
+        else:
+            st.success(f"No recent reviews mention items to avoid ({avoid_label}).")
+
+def main():
+    st.set_page_config(page_title="Pycon Plate Navigator", page_icon="🍜", layout="wide")
+    st.title("🍜 PyCon Plate Navigator")
+    st.markdown("### Find local spots that accommodate everyone's dietary needs.")
+
+    # Sidebar
+    with st.sidebar:
+        st.header("Search Parameters")
+        location_name = st.selectbox("📍 Select Location", ["PyCon US 2026"])
+        location = DEFAULT_LOCATION if location_name == "PyCon US 2026" else DEFAULT_LOCATION
+        
+        wants = st.text_input("🍱 What people want (e.g., Japanese, Vietnamese)", "Vietnamese")
+        avoids = st.text_input("🚫 What to avoid", "onions")
+        api_key = get_serpapi_key()
+
+    if st.button("Find Spots Nearby"):
+        if not api_key:
+            st.error("Please provide a SerpApi key.")
+            return
+
         search_query = wants if wants else "restaurants"
         with st.spinner(f"Searching for {search_query} in {location}..."):
-            params = {
-                "engine": "google_maps",
-                "q": f"{search_query} in {location}",
-                "api_key": api_key,
-                "ll": "@33.7658273,-118.1899613,15z",
-                "type": "search"
-            }
-
             client = serpapi.Client(api_key=api_key)
-            results = client.search(params).get("local_results", [])
+            results = search_restaurants(client, search_query, location)
 
             if not results:
                 st.warning("No results found. Try a different search.")
-            else:
-                st.subheader("Analyzing results and finding top 5 closest spots...")
-                
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                def process_place(place):
-                    data_id = place.get("data_id")
-                    title = place.get("title")
-                    
-                    # 1. Fetch walking distance
-                    distance_val = 999999 # Default for sorting if not found
-                    distance_text = "Unknown"
-                    
-                    dir_params = {
-                        "engine": "google_maps_directions",
-                        "start_addr": location,
-                        "end_addr": place.get("address"),
-                        "travel_mode": 2 # 2 is Walking in Google Maps Directions API
-                    }
-                    try:
-                        directions_result = client.search(dir_params)
-                        if directions_result.get("error"):
-                            logger.error(f"Error fetching directions for {title}: {directions_result.get('error')}")
-                        
-                        directions = directions_result.get("directions", [])
-                        if directions:
-                            # Usually the first direction is the best
-                            best_route = directions[0]
-                            distance_text = best_route.get("formatted_distance", "Unknown")
-                            # Extract distance in meters for sorting
-                            distance_val = best_route.get("distance", 999999)
-                    except Exception as e:
-                        logger.exception(f"Unexpected error fetching directions for {title}: {e}")
+                return
 
-                    # 2. Fetch reviews for this place to check for things to avoid
-                    review_params = {
-                        "engine": "google_maps_reviews",
-                        "data_id": data_id
-                    }
-                    mentions = {} # Use dict to track which avoid-item was mentioned
-                    avoid_list = [a.strip().lower() for a in avoids.split(",") if a.strip()]
-                    try:
-                        reviews_result = client.search(review_params)
-                        reviews = reviews_result.get("reviews", [])
-                        
-                        for r in reviews:
-                            snippet = r.get("snippet", "").lower()
-                            for a in avoid_list:
-                                if a in snippet:
-                                    if a not in mentions:
-                                        mentions[a] = []
-                                    mentions[a].append(r.get("snippet"))
-                    except Exception as e:
-                        logger.exception(f"Unexpected error fetching reviews for {title}: {e}")
-                    
-                    # 3. Ensure a link to Google Maps is available
-                    link = place.get("links", {}).get("directions")
-                    if not link:
-                        # Fallback: create a search link based on the title and address
-                        query = f"{title} {place.get('address', '')}".strip()
-                        link = f"https://www.google.com/maps/search/?api=1&query={query.replace(' ', '+')}"
+            st.subheader("Analyzing results and finding top 5 closest spots...")
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            avoid_list = [a.strip().lower() for a in avoids.split(",") if a.strip()]
+            safe_spots = []
+            
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = [executor.submit(process_place, client, p, location, avoid_list) for p in results[:10]]
+                for i, future in enumerate(futures):
+                    status_text.text(f"Processing {i+1}/{len(futures)}: {results[i].get('title')}...")
+                    progress_bar.progress((i) / len(futures))
+                    safe_spots.append(future.result())
 
-                    return {
-                        "Title": title,
-                        "Rating": place.get("rating"),
-                        "Reviews": place.get("reviews"),
-                        "Address": place.get("address"),
-                        "Distance": distance_text,
-                        "distance_val": distance_val,
-                        "Mentions": mentions,
-                        "Links": link
-                    }
+            progress_bar.empty()
+            status_text.empty()
 
-                safe_spots = []
-                # Use ThreadPoolExecutor to process places in parallel
-                with ThreadPoolExecutor(max_workers=10) as executor:
-                    # We still want to show progress, so we can use map or as_completed
-                    # However, to keep it simple and show which one is being processed, we can use a loop
-                    # but it's better to just fire them all and collect results
-                    futures = [executor.submit(process_place, place) for place in results[:10]]
-                    for i, future in enumerate(futures):
-                        title = results[i].get("title")
-                        status_text.text(f"Processing {i+1}/{len(futures)}: {title}...")
-                        progress_bar.progress((i) / len(futures))
-                        safe_spots.append(future.result())
+            safe_spots.sort(key=lambda x: x['distance_val'])
+            for spot in safe_spots[:5]:
+                display_spot(spot, avoids)
 
-                progress_bar.empty()
-                status_text.empty()
-
-                # Sort by walking distance
-                safe_spots.sort(key=lambda x: x['distance_val'])
-
-                # Only show top 5 spots
-                display_spots = safe_spots[:5]
-
-                # Display Results
-                for spot in display_spots:
-                    mention_count = sum(len(m) for m in spot['Mentions'].values())
-                    avoid_label = avoids if avoids else "anything"
-                    with st.expander(f"{spot['Title']} - {spot['Distance']} walk - {spot['Rating']}⭐ ({mention_count} mentions of items to avoid)"):
-                        st.markdown(f"**Address:** [{spot['Address']}]({spot['Links']})")
-                        
-                        if spot['Mentions']:
-                            for item, snippets in spot['Mentions'].items():
-                                st.write(f"**Review snippets mentioning '{item}':**")
-                                for m in snippets:
-                                    # Highlight all items to avoid in red
-                                    highlighted_m = m
-                                    avoid_list = [a.strip() for a in avoids.split(",") if a.strip()]
-                                    for avoid_item in avoid_list:
-                                        pattern = re.compile(re.escape(avoid_item), re.IGNORECASE)
-                                        highlighted_m = pattern.sub(f'<span style="color:red; font-weight:bold;">\g<0></span>', highlighted_m)
-                                    
-                                    st.markdown(f"<blockquote>{highlighted_m}</blockquote>", unsafe_allow_html=True)
-                        else:
-                            st.success(f"No recent reviews mention items to avoid ({avoid_label}).")
+if __name__ == "__main__":
+    main()
                 
