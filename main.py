@@ -1,7 +1,13 @@
 import streamlit as st
 import serpapi
 import os
+import re
+import logging
 from concurrent.futures import ThreadPoolExecutor
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Set page config for a better look
 st.set_page_config(page_title="Pycon Plate Navigator", page_icon="🍜", layout="wide")
@@ -31,7 +37,7 @@ with st.sidebar:
     else:
         st.info("✅ SerpApi Key loaded from environment.")
 
-if st.button("Find Safe Spots"):
+if st.button("Find Spots Nearby"):
     if not api_key:
         st.error("Please provide a SerpApi key.")
     else:
@@ -74,8 +80,7 @@ if st.button("Find Safe Spots"):
                     try:
                         directions_result = client.search(dir_params)
                         if directions_result.get("error"):
-                            # Using get here to avoid potential KeyErrors if error is present but not as a string
-                            pass
+                            logger.error(f"Error fetching directions for {title}: {directions_result.get('error')}")
                         
                         directions = directions_result.get("directions", [])
                         if directions:
@@ -84,8 +89,8 @@ if st.button("Find Safe Spots"):
                             distance_text = best_route.get("formatted_distance", "Unknown")
                             # Extract distance in meters for sorting
                             distance_val = best_route.get("distance", 999999)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.exception(f"Unexpected error fetching directions for {title}: {e}")
 
                     # 2. Fetch reviews for this place to check for things to avoid
                     review_params = {
@@ -105,8 +110,8 @@ if st.button("Find Safe Spots"):
                                     if a not in mentions:
                                         mentions[a] = []
                                     mentions[a].append(r.get("snippet"))
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.exception(f"Unexpected error fetching reviews for {title}: {e}")
                     
                     # 3. Ensure a link to Google Maps is available
                     link = place.get("links", {}).get("directions")
@@ -159,7 +164,14 @@ if st.button("Find Safe Spots"):
                             for item, snippets in spot['Mentions'].items():
                                 st.write(f"**Review snippets mentioning '{item}':**")
                                 for m in snippets:
-                                    st.info(f"\"{m}\"")
+                                    # Highlight all items to avoid in red
+                                    highlighted_m = m
+                                    avoid_list = [a.strip() for a in avoids.split(",") if a.strip()]
+                                    for avoid_item in avoid_list:
+                                        pattern = re.compile(re.escape(avoid_item), re.IGNORECASE)
+                                        highlighted_m = pattern.sub(f'<span style="color:red; font-weight:bold;">\g<0></span>', highlighted_m)
+                                    
+                                    st.markdown(f"<blockquote>{highlighted_m}</blockquote>", unsafe_allow_html=True)
                         else:
                             st.success(f"No recent reviews mention items to avoid ({avoid_label}).")
                 
