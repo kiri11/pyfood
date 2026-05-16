@@ -35,9 +35,12 @@ def search_restaurants(api_key, query, location):
     params = {
         "engine": "google_maps",
         "q": f"{query} in {location}",
-        "ll": "@33.7658273,-118.1899613,15z",
         "type": "search",
     }
+    # Only use hardcoded LL if it's the default location to avoid bias for other addresses
+    if location == DEFAULT_LOCATION:
+        params["ll"] = "@33.7658273,-118.1899613,15z"
+
     return client.search(params).get("local_results", [])
 
 
@@ -163,9 +166,15 @@ def main():
     # Sidebar
     with st.sidebar:
         st.header("Search Parameters")
-        location_name = st.selectbox("📍 Select Location", ["PyCon US 2026"])
+        location_input = st.text_input(
+            "📍 Location",
+            "PyCon US 2026",
+            help="Type 'PyCon US 2026' or any custom address.",
+        )
         location = (
-            DEFAULT_LOCATION if location_name == "PyCon US 2026" else DEFAULT_LOCATION
+            DEFAULT_LOCATION
+            if location_input.strip().lower() == "pycon us 2026"
+            else location_input
         )
 
         wants = st.text_input(

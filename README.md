@@ -6,9 +6,9 @@ Find local spots that accommodate everyone's dietary needs.
 
 [PyCon Plate Navigator](https://pyfood-2026.streamlit.app) is a Streamlit application designed for PyCon US 2026 attendees to find nearby restaurants in Long Beach that match their food preferences while helping them avoid specific ingredients or allergens.
 
-- **Smart Search:** Searches for restaurants based on what you want (e.g., "Vietnamese", "Sushi").
+- **Smart Search:** Searches for restaurants based on what you want (e.g., "Vietnamese", "Sushi") and a customizable location (defaults to the PyCon venue).
 - **Dietary Analysis:** Scans recent Google Maps reviews for mentions of items you want to avoid (e.g., "onions", "dairy", "peanuts").
-- **Walking Distance:** Automatically calculates the walking distance from the PyCon venue (Long Beach Convention Center).
+- **Walking Distance:** Automatically calculates the walking distance from your specified location.
 - **Interactive Results:** Displays the top 5 closest spots with expanded details and highlighted review snippets. It's hardcoded at only 5 options to avoid decision fatigue.
 - **Google Maps links:** By clicking on each address, you can open the restaraunts' pages in Google Maps to see photos and other details.
 
