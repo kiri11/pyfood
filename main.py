@@ -175,7 +175,10 @@ def main():
                 st.warning("No results found. Try a different search.")
                 return
 
-            st.subheader("Analyzing results and finding top 5 closest spots...")
+            results_header = st.empty()
+            results_header.subheader(
+                "Analyzing results and finding top 5 closest spots..."
+            )
             progress_bar = st.progress(0)
             status_text = st.empty()
 
@@ -191,11 +194,12 @@ def main():
                     status_text.text(
                         f"Processing {i + 1}/{len(futures)}: {results[i].get('title')}..."
                     )
-                    progress_bar.progress((i) / len(futures))
+                    progress_bar.progress(i / len(futures))
                     safe_spots.append(future.result())
 
             progress_bar.empty()
             status_text.empty()
+            results_header.subheader("Top 5 closest spots:")
 
             safe_spots.sort(key=lambda x: x["distance_val"])
             for spot in safe_spots[:5]:
