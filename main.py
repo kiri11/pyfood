@@ -28,8 +28,10 @@ def get_serpapi_key():
     return api_key
 
 
-def search_restaurants(client, query, location):
+@st.cache_data(show_spinner=False)
+def search_restaurants(api_key, query, location):
     """Search for restaurants using SerpApi."""
+    client = serpapi.Client(api_key=api_key)
     params = {
         "engine": "google_maps",
         "q": f"{query} in {location}",
@@ -39,8 +41,10 @@ def search_restaurants(client, query, location):
     return client.search(params).get("local_results", [])
 
 
-def get_walking_distance(client, start_location, end_address, title):
+@st.cache_data(show_spinner=False)
+def get_walking_distance(api_key, start_location, end_address, title):
     """Fetch walking distance between two locations."""
+    client = serpapi.Client(api_key=api_key)
     dir_params = {
         "engine": "google_maps_directions",
         "start_addr": start_location,
@@ -66,8 +70,10 @@ def get_walking_distance(client, start_location, end_address, title):
     return "Unknown", 999999
 
 
-def get_review_mentions(client, data_id, avoid_list, title):
+@st.cache_data(show_spinner=False)
+def get_review_mentions(api_key, data_id, avoid_list, title):
     """Fetch reviews and check for items to avoid."""
+    client = serpapi.Client(api_key=api_key)
     mentions = {}
     try:
         results = client.search({"engine": "google_maps_reviews", "data_id": data_id})
@@ -81,15 +87,15 @@ def get_review_mentions(client, data_id, avoid_list, title):
     return mentions
 
 
-def process_place(client, place, start_location, avoid_list):
+def process_place(api_key, place, start_location, avoid_list):
     """Process a single place: fetch distance and reviews."""
     title = place.get("title")
     address = place.get("address")
 
     distance_text, distance_val = get_walking_distance(
-        client, start_location, address, title
+        api_key, start_location, address, title
     )
-    mentions = get_review_mentions(client, place.get("data_id"), avoid_list, title)
+    mentions = get_review_mentions(api_key, place.get("data_id"), avoid_list, title)
 
     link = place.get("links", {}).get("directions")
     if not link:
@@ -175,8 +181,7 @@ def main():
 
         search_query = wants if wants else "restaurants"
         with st.spinner(f"Searching for {search_query} in {location}..."):
-            client = serpapi.Client(api_key=api_key)
-            results = search_restaurants(client, search_query, location)
+            results = search_restaurants(api_key, search_query, location)
 
             if not results:
                 st.warning("No results found. Try a different search.")
@@ -189,12 +194,12 @@ def main():
             progress_bar = st.progress(0)
             status_text = st.empty()
 
-            avoid_list = [a.strip().lower() for a in avoids.split(",") if a.strip()]
+            avoid_list = tuple(a.strip().lower() for a in avoids.split(",") if a.strip())
             safe_spots = []
 
             with ThreadPoolExecutor(max_workers=10) as executor:
                 futures = [
-                    executor.submit(process_place, client, p, location, avoid_list)
+                    executor.submit(process_place, api_key, p, location, avoid_list)
                     for p in results[:10]
                 ]
                 for i, future in enumerate(futures):
