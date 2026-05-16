@@ -9,8 +9,9 @@ Find local spots that accommodate everyone's dietary needs.
 - **Smart Search:** Searches for restaurants based on what you want (e.g., "Vietnamese", "Sushi") and a customizable location (defaults to the PyCon venue).
 - **Dietary Analysis:** Scans recent Google Maps reviews for mentions of items you want to avoid (e.g., "onions", "dairy", "peanuts").
 - **Walking Distance:** Automatically calculates the walking distance from your specified location.
+- **Quality Filter:** Automatically filters out any spots with a rating below 4.0 stars to ensure only highly-rated options are recommended.
 - **Interactive Results:** Displays the top 5 closest spots with expanded details and highlighted review snippets. It's hardcoded at only 5 options to avoid decision fatigue.
-- **Google Maps links:** By clicking on each address, you can open the restaraunts' pages in Google Maps to see photos and other details.
+- **Google Maps links:** By clicking on each address, you can open the restaurants' pages in Google Maps to see photos and other details.
 
 It's obviously easy to add more locations. Next year it will be PyCon 2027!
 
@@ -29,7 +30,7 @@ The application is built with a focus on responsiveness and efficiency:
 ## Non-obvious Decisions
 
 - **Aggressive Caching:** Every function that communicates with SerpApi is cached. Since Streamlit reruns the script on every user interaction, caching is essential to avoid hitting API rate limits and to keep the app cost-effective.
-- **Parallel processing of "Top 10":** The app initialy searches for many spots but only performs deep analysis (directions + reviews) on the first 10. This balance provides a good variety of results while keeping the total processing time under a few seconds.
+- **Parallel processing of "Top 10":** The app initially searches for many spots but only performs deep analysis (directions + reviews) on the first 10. This balance provides a good variety of results while keeping the total processing time under a few seconds.
 - **Keyword Highlighting in Snippets:** Rather than just showing a count of "mentions," the app uses Regex to inject HTML spans into review snippets. This allows it to highlight "avoid" keywords in red and "want" keywords in green directly in the UI.
 - **Flexible API Key Management:** The app looks for a `SERP_API_KEY` environment variable first. If missing, it provides a secure password input in the sidebar. This allows for easy local development while being ready for secure production deployment (e.g., on Streamlit Community Cloud).
 

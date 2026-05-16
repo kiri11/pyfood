@@ -191,9 +191,10 @@ def main():
         search_query = wants if wants else "restaurants"
         with st.spinner(f"Searching for {search_query} in {location}..."):
             results = search_restaurants(api_key, search_query, location)
+            results = [r for r in results if r.get("rating") and r.get("rating") >= 4.0]
 
             if not results:
-                st.warning("No results found. Try a different search.")
+                st.warning("No results found with 4+ stars. Try a different search.")
                 return
 
             results_header = st.empty()
