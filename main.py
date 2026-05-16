@@ -110,7 +110,7 @@ def process_place(client, place, start_location, avoid_list):
     }
 
 
-def display_spot(spot, avoids):
+def display_spot(spot, avoids, wants):
     """Render a single spot in Streamlit."""
     mention_count = sum(len(m) for m in spot["Mentions"].values())
     avoid_label = avoids if avoids else "anything"
@@ -122,6 +122,7 @@ def display_spot(spot, avoids):
 
         if spot["Mentions"]:
             avoid_list = [a.strip() for a in avoids.split(",") if a.strip()]
+            want_list = [w.strip() for w in wants.split(",") if w.strip()]
             for item, snippets in spot["Mentions"].items():
                 st.write(f"**Review snippets mentioning '{item}':**")
                 for snippet in snippets:
@@ -130,6 +131,12 @@ def display_spot(spot, avoids):
                         pattern = re.compile(re.escape(avoid_item), re.IGNORECASE)
                         highlighted = pattern.sub(
                             r'<span style="color:red; font-weight:bold;">\g<0></span>',
+                            highlighted,
+                        )
+                    for want_item in want_list:
+                        pattern = re.compile(re.escape(want_item), re.IGNORECASE)
+                        highlighted = pattern.sub(
+                            r'<span style="color:green; font-weight:bold;">\g<0></span>',
                             highlighted,
                         )
                     st.markdown(
@@ -203,7 +210,7 @@ def main():
 
             safe_spots.sort(key=lambda x: x["distance_val"])
             for spot in safe_spots[:5]:
-                display_spot(spot, avoids)
+                display_spot(spot, avoids, wants)
 
 
 if __name__ == "__main__":
