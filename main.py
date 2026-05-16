@@ -103,6 +103,13 @@ if st.button("Find Safe Spots"):
                     except Exception:
                         pass
                     
+                    # 3. Ensure a link to Google Maps is available
+                    link = place.get("links", {}).get("directions")
+                    if not link:
+                        # Fallback: create a search link based on the title and address
+                        query = f"{title} {place.get('address', '')}".strip()
+                        link = f"https://www.google.com/maps/search/?api=1&query={query.replace(' ', '+')}"
+
                     return {
                         "Title": title,
                         "Rating": place.get("rating"),
@@ -111,9 +118,7 @@ if st.button("Find Safe Spots"):
                         "Distance": distance_text,
                         "distance_val": distance_val,
                         "Mentions": mentions,
-                        "Links": place.get("links", {}).get("directions"),
-                        "lat": place.get("gps_coordinates", {}).get("latitude"),
-                        "lon": place.get("gps_coordinates", {}).get("longitude")
+                        "Links": link
                     }
 
                 safe_spots = []
@@ -141,30 +146,12 @@ if st.button("Find Safe Spots"):
                 # Display Results
                 for spot in display_spots:
                     with st.expander(f"{spot['Title']} - {spot['Distance']} walk - {spot['Rating']}⭐ ({len(spot['Mentions'])} mentions of '{avoid}')"):
-                        col1, col2 = st.columns([2, 1])
-                        with col1:
-                            if spot['Links']:
-                                st.markdown(f"**Address:** [{spot['Address']}]({spot['Links']})")
-                            else:
-                                st.write(f"**Address:** {spot['Address']}")
-                            
-                            if spot['Mentions']:
-                                st.write(f"**Review snippets mentioning '{avoid}':**")
-                                for m in spot['Mentions']:
-                                    st.info(f"\"{m}\"")
-                            else:
-                                st.success(f"No recent reviews mention '{avoid}'.")
+                        st.markdown(f"**Address:** [{spot['Address']}]({spot['Links']})")
                         
-                        with col2:
-                            if spot['Links']:
-                                st.link_button("View on Maps", spot['Links'])
+                        if spot['Mentions']:
+                            st.write(f"**Review snippets mentioning '{avoid}':**")
+                            for m in spot['Mentions']:
+                                st.info(f"\"{m}\"")
+                        else:
+                            st.success(f"No recent reviews mention '{avoid}'.")
                 
-                # Show Map
-                df = pd.DataFrame(display_spots)
-                if not df.empty and "lat" in df.columns and "lon" in df.columns:
-                    st.divider()
-                    st.subheader("Map View")
-                    # Streamlit's st.map uses the 'name' or 'label' column for tooltips/labels if available
-                    map_df = df.dropna(subset=['lat', 'lon']).copy()
-                    map_df['label'] = map_df['Title']
-                    st.map(map_df)
