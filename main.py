@@ -194,7 +194,9 @@ def main():
             progress_bar = st.progress(0)
             status_text = st.empty()
 
-            avoid_list = tuple(a.strip().lower() for a in avoids.split(",") if a.strip())
+            avoid_list = tuple(
+                a.strip().lower() for a in avoids.split(",") if a.strip()
+            )
             safe_spots = []
 
             with ThreadPoolExecutor(max_workers=10) as executor:
