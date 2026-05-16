@@ -47,7 +47,7 @@ if st.button("Find Safe Spots"):
             if not results:
                 st.warning("No results found. Try a different search.")
             else:
-                st.subheader(f"Found {len(results)} spots. Analyzing distance and reviews...")
+                st.subheader("Analyzing results and finding top 5 closest spots...")
                 
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -125,12 +125,19 @@ if st.button("Find Safe Spots"):
                 # Sort by walking distance
                 safe_spots.sort(key=lambda x: x['distance_val'])
 
+                # Only show top 5 spots
+                display_spots = safe_spots[:5]
+
                 # Display Results
-                for spot in safe_spots:
+                for spot in display_spots:
                     with st.expander(f"{spot['Title']} - {spot['Distance']} walk - {spot['Rating']}⭐ ({len(spot['Mentions'])} mentions of '{avoid}')"):
                         col1, col2 = st.columns([2, 1])
                         with col1:
-                            st.write(f"**Address:** {spot['Address']}")
+                            if spot['Links']:
+                                st.markdown(f"**Address:** [{spot['Address']}]({spot['Links']})")
+                            else:
+                                st.write(f"**Address:** {spot['Address']}")
+                            
                             if spot['Mentions']:
                                 st.write(f"**Review snippets mentioning '{avoid}':**")
                                 for m in spot['Mentions']:
@@ -143,7 +150,7 @@ if st.button("Find Safe Spots"):
                                 st.link_button("View on Maps", spot['Links'])
                 
                 # Show Map
-                df = pd.DataFrame(safe_spots)
+                df = pd.DataFrame(display_spots)
                 if not df.empty and "lat" in df.columns and "lon" in df.columns:
                     st.divider()
                     st.subheader("Map View")
