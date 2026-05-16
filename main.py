@@ -1,6 +1,5 @@
 import streamlit as st
 import serpapi
-import pandas as pd
 import os
 from concurrent.futures import ThreadPoolExecutor
 
@@ -8,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 st.set_page_config(page_title="Pycon Plate Navigator", page_icon="🍜", layout="wide")
 
 st.title("🍜 PyCon Plate Navigator")
-st.markdown("### Find local spots that accommodate your dietary needs.")
+st.markdown("### Find local spots that accommodate everyone's dietary needs.")
 
 # Sidebar for inputs
 with st.sidebar:
@@ -21,8 +20,8 @@ with st.sidebar:
     else:
         location = "300 E Ocean Blvd, Long Beach, CA 90802" # Fallback
         
-    cuisine = st.text_input("🍱 Cuisine (e.g., Japanese, Vietnamese)", "Vietnamese")
-    avoid = st.text_input("🚫 Ingredient to avoid", "onions")
+    wants = st.text_input("🍱 What people want (e.g., Japanese, Vietnamese)", "Vietnamese")
+    avoids = st.text_input("🚫 What to avoid", "onions")
     
     # Securely get API key from environment or secrets
     api_key = os.getenv("SERP_API_KEY")
@@ -36,10 +35,12 @@ if st.button("Find Safe Spots"):
     if not api_key:
         st.error("Please provide a SerpApi key.")
     else:
-        with st.spinner(f"Searching for {cuisine} in {location}..."):
+        # Prepare search query
+        search_query = wants if wants else "restaurants"
+        with st.spinner(f"Searching for {search_query} in {location}..."):
             params = {
                 "engine": "google_maps",
-                "q": f"{cuisine} restaurants in {location}",
+                "q": f"{search_query} in {location}",
                 "api_key": api_key,
                 "ll": "@33.7658273,-118.1899613,15z",
                 "type": "search"
@@ -86,20 +87,24 @@ if st.button("Find Safe Spots"):
                     except Exception:
                         pass
 
-                    # 2. Fetch reviews for this place to check for the avoided ingredient
+                    # 2. Fetch reviews for this place to check for things to avoid
                     review_params = {
                         "engine": "google_maps_reviews",
                         "data_id": data_id
                     }
-                    mentions = []
+                    mentions = {} # Use dict to track which avoid-item was mentioned
+                    avoid_list = [a.strip().lower() for a in avoids.split(",") if a.strip()]
                     try:
                         reviews_result = client.search(review_params)
                         reviews = reviews_result.get("reviews", [])
                         
                         for r in reviews:
                             snippet = r.get("snippet", "").lower()
-                            if avoid.lower() in snippet:
-                                mentions.append(r.get("snippet"))
+                            for a in avoid_list:
+                                if a in snippet:
+                                    if a not in mentions:
+                                        mentions[a] = []
+                                    mentions[a].append(r.get("snippet"))
                     except Exception:
                         pass
                     
@@ -123,15 +128,15 @@ if st.button("Find Safe Spots"):
 
                 safe_spots = []
                 # Use ThreadPoolExecutor to process places in parallel
-                with ThreadPoolExecutor(max_workers=5) as executor:
+                with ThreadPoolExecutor(max_workers=10) as executor:
                     # We still want to show progress, so we can use map or as_completed
                     # However, to keep it simple and show which one is being processed, we can use a loop
                     # but it's better to just fire them all and collect results
-                    futures = [executor.submit(process_place, place) for place in results]
+                    futures = [executor.submit(process_place, place) for place in results[:10]]
                     for i, future in enumerate(futures):
                         title = results[i].get("title")
-                        status_text.text(f"Processing {i+1}/{len(results)}: {title}...")
-                        progress_bar.progress((i) / len(results))
+                        status_text.text(f"Processing {i+1}/{len(futures)}: {title}...")
+                        progress_bar.progress((i) / len(futures))
                         safe_spots.append(future.result())
 
                 progress_bar.empty()
@@ -145,13 +150,16 @@ if st.button("Find Safe Spots"):
 
                 # Display Results
                 for spot in display_spots:
-                    with st.expander(f"{spot['Title']} - {spot['Distance']} walk - {spot['Rating']}⭐ ({len(spot['Mentions'])} mentions of '{avoid}')"):
+                    mention_count = sum(len(m) for m in spot['Mentions'].values())
+                    avoid_label = avoids if avoids else "anything"
+                    with st.expander(f"{spot['Title']} - {spot['Distance']} walk - {spot['Rating']}⭐ ({mention_count} mentions of items to avoid)"):
                         st.markdown(f"**Address:** [{spot['Address']}]({spot['Links']})")
                         
                         if spot['Mentions']:
-                            st.write(f"**Review snippets mentioning '{avoid}':**")
-                            for m in spot['Mentions']:
-                                st.info(f"\"{m}\"")
+                            for item, snippets in spot['Mentions'].items():
+                                st.write(f"**Review snippets mentioning '{item}':**")
+                                for m in snippets:
+                                    st.info(f"\"{m}\"")
                         else:
-                            st.success(f"No recent reviews mention '{avoid}'.")
+                            st.success(f"No recent reviews mention items to avoid ({avoid_label}).")
                 
